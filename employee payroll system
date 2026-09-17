@@ -1,0 +1,465 @@
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    private static Scanner scanner = new Scanner(System.in);
+    private static PayrollSystem payroll = new PayrollSystem();
+
+    public static void main(String[] args) {
+        // Load existing data on startup
+        List<Employee> loaded = FileStorage.load();
+        for (Employee e : loaded) {
+            payroll.addEmployee(e);
+        }
+        if (!loaded.isEmpty()) {
+            System.out.println("Loaded " + loaded.size() + " employee record(s) from file.");
+        }
+
+        boolean running = true;
+        while (running) {
+            printMenu();
+            String choice = scanner.nextLine().trim();
+
+            switch (choice) {
+                case "1": addEmployee(); break;
+                case "2": viewAllEmployees(); break;
+                case "3": removeEmployee(); break;
+                case "4": generatePayslip(); break;
+                case "5": payroll.printSummaryReport(); break;
+                case "6": viewSortedBySalary(); break;
+                case "7": searchByName(); break;
+                case "0":
+                    FileStorage.save(payroll.getAll());
+                    System.out.println("Data saved. Goodbye!");
+                    running = false;
+                    break;
+                default:
+                    System.out.println("Invalid choice, try again.");
+            }
+        }
+        scanner.close();
+    }
+
+    private static void printMenu() {
+        System.out.println("\n===== Employee Payroll System =====");
+        System.out.println("1. Add Employee");
+        System.out.println("2. View All Employees");
+        System.out.println("3. Remove Employee");
+        System.out.println("4. Generate Payslip");
+        System.out.println("5. Summary Report");
+        System.out.println("6. View Employees Sorted by Salary");
+        System.out.println("7. Search Employee by Name");
+        System.out.println("0. Save & Exit");
+        System.out.print("Choose an option: ");
+    }
+
+    private static void addEmployee() {
+        System.out.print("Enter employee type (1=Full-Time, 2=Part-Time, 3=Manager): ");
+        String type = scanner.nextLine().trim();
+
+        System.out.print("Enter ID: ");
+        String id = scanner.nextLine().trim();
+        if (payroll.idExists(id)) {
+            System.out.println("An employee with this ID already exists.");
+            return;
+        }
+
+        System.out.print("Enter name: ");
+        String name = scanner.nextLine().trim();
+
+        System.out.print("Enter department: ");
+        String dept = scanner.nextLine().trim();
+
+        try {
+            switch (type) {
+                case "1": {
+                    double salary = readDouble("Enter base salary: ");
+                    payroll.addEmployee(new FullTimeEmployee(id, name, dept, salary));
+                    break;
+                }
+                case "2": {
+                    double rate = readDouble("Enter hourly rate: ");
+                    double hours = readDouble("Enter hours worked this period: ");
+                    payroll.addEmployee(new PartTimeEmployee(id, name, dept, rate, hours));
+                    break;
+                }
+                case "3": {
+                    double salary = readDouble("Enter base salary: ");
+                    double bonus = readDouble("Enter bonus percent (e.g. 10 for 10%): ");
+                    double tax = readDouble("Enter tax percent (e.g. 5 for 5%): ");
+                    payroll.addEmployee(new Manager(id, name, dept, salary, bonus, tax));
+                    break;
+                }
+                default:
+                    System.out.println("Invalid employee type.");
+                    return;
+            }
+            System.out.println("Employee added successfully.");
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid number entered. Employee not added.");
+        }
+    }
+
+    private static void viewAllEmployees() {
+        if (payroll.isEmpty()) {
+            System.out.println("No employees on record.");
+            return;
+        }
+        System.out.println("\n--- All Employees ---");
+        for (Employee e : payroll.getAll()) {
+            try {
+                System.out.printf("%-10s %-15s %-10s Dept: %-10s Salary: %.2f%n",
+                        e.getId(), e.getName(), e.getType(), e.getDepartment(), e.calculateSalary());
+            } catch (InvalidSalaryException ex) {
+                System.out.printf("%-10s %-15s %-10s Dept: %-10s [Salary Error: %s]%n",
+                        e.getId(), e.getName(), e.getType(), e.getDepartment(), ex.getMessage());
+            }
+        }
+    }
+
+    private static void removeEmployee() {
+        System.out.print("Enter employee ID to remove: ");
+        String id = scanner.nextLine().trim();
+        try {
+            payroll.removeEmployee(id);
+            System.out.println("Employee removed.");
+        } catch (EmployeeNotFoundException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+    private static void generatePayslip() {
+        System.out.print("Enter employee ID: ");
+        String id = scanner.nextLine().trim();
+        try {
+            Employee e = payroll.findById(id);
+            String slip = Payslip.generate(e);
+            System.out.println(slip);
+
+            System.out.print("Export to file? (y/n): ");
+            String choice = scanner.nextLine().trim();
+            if (choice.equalsIgnoreCase("y")) {
+                Payslip.exportToFile(e, ".");
+                System.out.println("Payslip exported to payslip_" + e.getId() + ".txt");
+            }
+        } catch (EmployeeNotFoundException | InvalidSalaryException ex) {
+            System.out.println("Error: " + ex.getMessage());
+        } catch (IOException ex) {
+            System.out.println("Failed to export payslip: " + ex.getMessage());
+        }
+    }
+
+    private static void viewSortedBySalary() {
+        List<Employee> sorted = payroll.sortedBySalaryDesc();
+        if (sorted.isEmpty()) {
+            System.out.println("No employees on record.");
+            return;
+        }
+        System.out.println("\n--- Employees Sorted by Salary (Descending) ---");
+        for (Employee e : sorted) {
+            try {
+                System.out.printf("%-10s %-15s %-10s Salary: %.2f%n",
+                        e.getId(), e.getName(), e.getType(), e.calculateSalary());
+            } catch (InvalidSalaryException ex) {
+                System.out.printf("%-10s %-15s %-10s [Salary Error]%n", e.getId(), e.getName(), e.getType());
+            }
+        }
+    }
+
+    private static void searchByName() {
+        System.out.print("Enter name (or part of name) to search: ");
+        String query = scanner.nextLine().trim().toLowerCase();
+        boolean found = false;
+        for (Employee e : payroll.getAll()) {
+            if (e.getName().toLowerCase().contains(query)) {
+                found = true;
+                System.out.printf("%-10s %-15s %-10s Dept: %s%n",
+                        e.getId(), e.getName(), e.getType(), e.getDepartment());
+            }
+        }
+        if (!found) {
+            System.out.println("No matching employees found.");
+        }
+    }
+
+    private static double readDouble(String prompt) {
+        System.out.print(prompt);
+        return Double.parseDouble(scanner.nextLine().trim());
+    }
+}
+
+// ===================== Employee hierarchy =====================
+
+abstract class Employee implements Serializable {
+    private static final long serialVersionUID = 1L;
+
+    protected String id;
+    protected String name;
+    protected String department;
+
+    public Employee(String id, String name, String department) {
+        this.id = id;
+        this.name = name;
+        this.department = department;
+    }
+
+    public String getId() { return id; }
+    public String getName() { return name; }
+    public String getDepartment() { return department; }
+
+    public abstract double calculateSalary() throws InvalidSalaryException;
+    public abstract String getType();
+}
+
+class FullTimeEmployee extends Employee {
+    private static final long serialVersionUID = 1L;
+    protected double baseSalary;
+
+    public FullTimeEmployee(String id, String name, String department, double baseSalary) {
+        super(id, name, department);
+        this.baseSalary = baseSalary;
+    }
+
+    public double getBaseSalary() { return baseSalary; }
+
+    public void setBaseSalary(double baseSalary) throws InvalidSalaryException {
+        if (baseSalary <= 0) throw new InvalidSalaryException("Base salary must be positive.");
+        this.baseSalary = baseSalary;
+    }
+
+    @Override
+    public double calculateSalary() throws InvalidSalaryException {
+        if (baseSalary <= 0) throw new InvalidSalaryException("Base salary must be positive for employee " + id);
+        return baseSalary;
+    }
+
+    @Override
+    public String getType() { return "FULL-TIME"; }
+}
+
+class PartTimeEmployee extends Employee {
+    private static final long serialVersionUID = 1L;
+    private double hourlyRate;
+    private double hoursWorked;
+    private static final double OVERTIME_THRESHOLD = 40.0;
+    private static final double OVERTIME_MULTIPLIER = 1.5;
+
+    public PartTimeEmployee(String id, String name, String department, double hourlyRate, double hoursWorked) {
+        super(id, name, department);
+        this.hourlyRate = hourlyRate;
+        this.hoursWorked = hoursWorked;
+    }
+
+    public double getHourlyRate() { return hourlyRate; }
+    public double getHoursWorked() { return hoursWorked; }
+
+    public void setHoursWorked(double hoursWorked) throws InvalidSalaryException {
+        if (hoursWorked < 0) throw new InvalidSalaryException("Hours worked cannot be negative.");
+        this.hoursWorked = hoursWorked;
+    }
+
+    @Override
+    public double calculateSalary() throws InvalidSalaryException {
+        if (hourlyRate <= 0) throw new InvalidSalaryException("Hourly rate must be positive for employee " + id);
+        if (hoursWorked <= OVERTIME_THRESHOLD) {
+            return hoursWorked * hourlyRate;
+        }
+        double regularPay = OVERTIME_THRESHOLD * hourlyRate;
+        double overtimeHours = hoursWorked - OVERTIME_THRESHOLD;
+        double overtimePay = overtimeHours * hourlyRate * OVERTIME_MULTIPLIER;
+        return regularPay + overtimePay;
+    }
+
+    @Override
+    public String getType() { return "PART-TIME"; }
+}
+
+class Manager extends FullTimeEmployee {
+    private static final long serialVersionUID = 1L;
+    private double bonusPercent;
+    private double taxPercent;
+
+    public Manager(String id, String name, String department, double baseSalary,
+                    double bonusPercent, double taxPercent) {
+        super(id, name, department, baseSalary);
+        this.bonusPercent = bonusPercent;
+        this.taxPercent = taxPercent;
+    }
+
+    public double getBonusPercent() { return bonusPercent; }
+    public double getTaxPercent() { return taxPercent; }
+
+    public void setBonusPercent(double bonusPercent) throws InvalidSalaryException {
+        if (bonusPercent < 0) throw new InvalidSalaryException("Bonus percent cannot be negative.");
+        this.bonusPercent = bonusPercent;
+    }
+
+    public void setTaxPercent(double taxPercent) throws InvalidSalaryException {
+        if (taxPercent < 0 || taxPercent > 100) throw new InvalidSalaryException("Tax percent must be between 0 and 100.");
+        this.taxPercent = taxPercent;
+    }
+
+    @Override
+    public double calculateSalary() throws InvalidSalaryException {
+        double base = super.calculateSalary();
+        double bonus = base * (bonusPercent / 100.0);
+        double gross = base + bonus;
+        double tax = gross * (taxPercent / 100.0);
+        return gross - tax;
+    }
+
+    @Override
+    public String getType() { return "MANAGER"; }
+}
+
+// ===================== Exceptions =====================
+
+class InvalidSalaryException extends Exception {
+    public InvalidSalaryException(String message) { super(message); }
+}
+
+class EmployeeNotFoundException extends Exception {
+    public EmployeeNotFoundException(String message) { super(message); }
+}
+
+// ===================== Payroll collection & reporting =====================
+
+class PayrollSystem {
+    private Map<String, Employee> employees = new LinkedHashMap<>();
+
+    public void addEmployee(Employee e) { employees.put(e.getId(), e); }
+
+    public Employee findById(String id) throws EmployeeNotFoundException {
+        Employee e = employees.get(id);
+        if (e == null) throw new EmployeeNotFoundException("No employee found with ID: " + id);
+        return e;
+    }
+
+    public void removeEmployee(String id) throws EmployeeNotFoundException {
+        if (!employees.containsKey(id)) throw new EmployeeNotFoundException("No employee found with ID: " + id);
+        employees.remove(id);
+    }
+
+    public Collection<Employee> getAll() { return employees.values(); }
+    public boolean isEmpty() { return employees.isEmpty(); }
+    public boolean idExists(String id) { return employees.containsKey(id); }
+
+    public List<Employee> sortedBySalaryDesc() {
+        List<Employee> list = new ArrayList<>(employees.values());
+        list.sort((a, b) -> {
+            try {
+                return Double.compare(b.calculateSalary(), a.calculateSalary());
+            } catch (InvalidSalaryException ex) {
+                return 0;
+            }
+        });
+        return list;
+    }
+
+    public void printSummaryReport() {
+        if (employees.isEmpty()) {
+            System.out.println("No employees to report on.");
+            return;
+        }
+        double total = 0;
+        Employee highest = null;
+        double highestSalary = -1;
+        int validCount = 0;
+
+        for (Employee e : employees.values()) {
+            try {
+                double salary = e.calculateSalary();
+                total += salary;
+                validCount++;
+                if (salary > highestSalary) {
+                    highestSalary = salary;
+                    highest = e;
+                }
+            } catch (InvalidSalaryException ex) {
+                System.out.println("Skipping " + e.getId() + " in report: " + ex.getMessage());
+            }
+        }
+
+        System.out.println("\n--- Payroll Summary Report ---");
+        System.out.printf("Total employees     : %d%n", employees.size());
+        System.out.printf("Total payroll cost   : %.2f%n", total);
+        if (validCount > 0) System.out.printf("Average salary       : %.2f%n", total / validCount);
+        if (highest != null) System.out.printf("Highest paid         : %s (%s) - %.2f%n", highest.getName(), highest.getId(), highestSalary);
+    }
+}
+
+// ===================== Payslip generation =====================
+
+class Payslip {
+    public static String generate(Employee e) throws InvalidSalaryException {
+        StringBuilder sb = new StringBuilder();
+        double salary = e.calculateSalary();
+
+        sb.append("========================================\n");
+        sb.append("               PAYSLIP\n");
+        sb.append("========================================\n");
+        sb.append(String.format("Employee ID   : %s%n", e.getId()));
+        sb.append(String.format("Name          : %s%n", e.getName()));
+        sb.append(String.format("Department    : %s%n", e.getDepartment()));
+        sb.append(String.format("Type          : %s%n", e.getType()));
+        sb.append("----------------------------------------\n");
+
+        if (e instanceof Manager) {
+            Manager m = (Manager) e;
+            double base = m.getBaseSalary();
+            double bonus = base * (m.getBonusPercent() / 100.0);
+            double gross = base + bonus;
+            double tax = gross * (m.getTaxPercent() / 100.0);
+            sb.append(String.format("Base Salary   : %.2f%n", base));
+            sb.append(String.format("Bonus (%.1f%%) : %.2f%n", m.getBonusPercent(), bonus));
+            sb.append(String.format("Gross         : %.2f%n", gross));
+            sb.append(String.format("Tax (%.1f%%)   : -%.2f%n", m.getTaxPercent(), tax));
+        } else if (e instanceof PartTimeEmployee) {
+            PartTimeEmployee p = (PartTimeEmployee) e;
+            sb.append(String.format("Hourly Rate   : %.2f%n", p.getHourlyRate()));
+            sb.append(String.format("Hours Worked  : %.2f%n", p.getHoursWorked()));
+        } else if (e instanceof FullTimeEmployee) {
+            FullTimeEmployee f = (FullTimeEmployee) e;
+            sb.append(String.format("Base Salary   : %.2f%n", f.getBaseSalary()));
+        }
+
+        sb.append("----------------------------------------\n");
+        sb.append(String.format("NET PAY       : %.2f%n", salary));
+        sb.append("========================================\n");
+        return sb.toString();
+    }
+
+    public static void exportToFile(Employee e, String directory) throws InvalidSalaryException, IOException {
+        String content = generate(e);
+        String filename = directory + "/payslip_" + e.getId() + ".txt";
+        try (PrintWriter writer = new PrintWriter(new FileWriter(filename))) {
+            writer.print(content);
+        }
+    }
+}
+
+// ===================== File persistence =====================
+
+class FileStorage {
+    private static final String DATA_FILE = "payroll_data.ser";
+
+    @SuppressWarnings("unchecked")
+    public static List<Employee> load() {
+        File file = new File(DATA_FILE);
+        if (!file.exists()) return new ArrayList<>();
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
+            return (List<Employee>) ois.readObject();
+        } catch (IOException | ClassNotFoundException e) {
+            System.out.println("Could not load existing data (starting fresh): " + e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    public static void save(Collection<Employee> employees) {
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(DATA_FILE))) {
+            oos.writeObject(new ArrayList<>(employees));
+        } catch (IOException e) {
+            System.out.println("Failed to save data: " + e.getMessage());
+        }
+    }
+}
