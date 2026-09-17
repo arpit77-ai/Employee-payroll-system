@@ -1,0 +1,21 @@
+Background & Context:
+
+Modern organizations employ heterogeneous workforces consisting of full-time salaried staff, hourly contractors, and managerial/executive personnel with disparate compensation structures.
+Traditional manual methods (spreadsheets, paper logs) lead to calculation inaccuracies, delayed disbursements, and compliance risks.
+Core Problems Addressed:
+
+Inflexible Compensation Rules: Difficulty in accounting for varied pay models like overtime rates (
+1.5
+×
+1.5× beyond 40 hours) and executive bonuses with variable tax withholdings.
+Lack of Input Validation: Risk of negative salaries, invalid hourly rates, out-of-range tax brackets, and duplicate IDs.
+Data Volatility: Risk of losing state across administrative sessions without persistent storage.
+Auditability Deficits: Lack of standardized, exportable payslips detailing gross earnings, bonuses, deductions, and net pay.
+Inefficient Reporting: Absence of instant metrics such as aggregate company payroll cost, average salary, highest earners, and employee search.
+Project Objectives & Technical Solution:
+
+Apply Object-Oriented Programming (OOP) principles: Abstraction, Polymorphism, Inheritance, and Encapsulation.
+Enforce domain validation using custom checked exceptions (InvalidSalaryException, EmployeeNotFoundException).
+Implement data persistence via Java Object Serialization (payroll_data.ser).
+Provide automated payslip generation and text file export (payslip_<id>.txt).
+Offer an interactive CLI with analytical reporting, sorting, and search capabilities.
